@@ -2,19 +2,24 @@
 # Copyright 2009-2010 Joshua Roesslein
 # See LICENSE for details.
 
-import urllib
+from __future__ import print_function
+
 import time
 import re
 
+from six.moves.urllib.parse import quote
 import requests
 
-from tweepy.error import TweepError
+import logging
+
+from tweepy.error import TweepError, RateLimitError, is_rate_limit_error_message
 from tweepy.utils import convert_to_utf8_str
 from tweepy.models import Model
 
 
 re_path_template = re.compile('{\w+}')
 
+log = logging.getLogger('tweepy.binder')
 
 def bind_api(**config):
 
@@ -28,6 +33,7 @@ def bind_api(**config):
         method = config.get('method', 'GET')
         require_auth = config.get('require_auth', False)
         search_api = config.get('search_api', False)
+        upload_api = config.get('upload_api', False)
         use_cache = config.get('use_cache', True)
         session = requests.Session()
 
@@ -56,6 +62,8 @@ def bind_api(**config):
             # Pick correct URL root to use
             if self.search_api:
                 self.api_root = api.search_root
+            elif self.upload_api:
+                self.api_root = api.upload_root
             else:
                 self.api_root = api.api_root
 
@@ -64,6 +72,8 @@ def bind_api(**config):
 
             if self.search_api:
                 self.host = api.search_host
+            elif self.upload_api:
+                self.host = api.upload_host
             else:
                 self.host = api.host
 
@@ -71,7 +81,6 @@ def bind_api(**config):
             # or older where Host is set including the 443 port.
             # This causes Twitter to issue 301 redirect.
             # See Issue https://github.com/tweepy/tweepy/issues/12
-
             self.session.headers['Host'] = self.host
             # Monitoring rate limits
             self._remaining_calls = None
@@ -95,6 +104,8 @@ def bind_api(**config):
 
                 self.session.params[k] = convert_to_utf8_str(arg)
 
+            log.info("PARAMS: %r", self.session.params)
+
         def build_path(self):
             for variable in re_path_template.findall(self.path):
                 name = variable.strip('{}')
@@ -104,7 +115,7 @@ def bind_api(**config):
                     value = self.api.auth.get_username()
                 else:
                     try:
-                        value = urllib.quote(self.session.params[name])
+                        value = quote(self.session.params[name])
                     except KeyError:
                         raise TweepError('No parameter value found for path variable: %s' % name)
                     del self.session.params[name]
@@ -147,8 +158,16 @@ def bind_api(**config):
                                 sleep_time = self._reset_time - int(time.time())
                                 if sleep_time > 0:
                                     if self.wait_on_rate_limit_notify:
-                                        print "Rate limit reached. Sleeping for: " + str(sleep_time)
+                                        print("Rate limit reached. Sleeping for:", sleep_time)
                                     time.sleep(sleep_time + 5)  # sleep for few extra sec
+
+                # if self.wait_on_rate_limit and self._reset_time is not None and \
+                #                 self._remaining_calls is not None and self._remaining_calls < 1:
+                #     sleep_time = self._reset_time - int(time.time())
+                #     if sleep_time > 0:
+                #         if self.wait_on_rate_limit_notify:
+                #             print("Rate limit reached. Sleeping for: " + str(sleep_time))
+                #         time.sleep(sleep_time + 5)  # sleep for few extra sec
 
                 # Apply authentication
                 if self.api.auth:
@@ -166,7 +185,7 @@ def bind_api(**config):
                                                 timeout=self.api.timeout,
                                                 auth=auth,
                                                 proxies=self.api.proxy)
-                except Exception, e:
+                except Exception as e:
                     raise TweepError('Failed to send request: %s' % e)
                 rem_calls = resp.headers.get('x-rate-limit-remaining')
                 if rem_calls is not None:
@@ -198,10 +217,16 @@ def bind_api(**config):
             self.api.last_response = resp
             if resp.status_code and not 200 <= resp.status_code < 300:
                 try:
-                    error_msg = self.parser.parse_error(resp.text)
+                    error_msg, api_error_code = \
+                        self.parser.parse_error(resp.text)
                 except Exception:
                     error_msg = "Twitter error response: status code = %s" % resp.status_code
-                raise TweepError(error_msg, resp)
+                    api_error_code = None
+
+                if is_rate_limit_error_message(error_msg):
+                    raise RateLimitError(error_msg, resp)
+                else:
+                    raise TweepError(error_msg, resp, api_code=api_error_code)
 
             # Parse the response payload
             result = self.parser.parse(self, resp.text)

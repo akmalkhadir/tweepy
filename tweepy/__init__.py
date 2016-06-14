@@ -5,12 +5,12 @@
 """
 Tweepy Twitter API library
 """
-__version__ = '2.3'
+__version__ = '3.6.0'
 __author__ = 'Joshua Roesslein'
 __license__ = 'MIT'
 
 from tweepy.models import Status, User, DirectMessage, Friendship, SavedSearch, SearchResults, ModelFactory, Category
-from tweepy.error import TweepError
+from tweepy.error import TweepError, RateLimitError
 from tweepy.api import API
 from tweepy.cache import Cache, MemoryCache, FileCache
 from tweepy.auth import OAuthHandler, AppAuthHandler
@@ -21,7 +21,5 @@ from tweepy.cursor import Cursor
 api = API()
 
 def debug(enable=True, level=1):
-
-    import httplib
-    httplib.HTTPConnection.debuglevel = level
-
+    from six.moves.http_client import HTTPConnection
+    HTTPConnection.debuglevel = level

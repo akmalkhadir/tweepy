@@ -50,9 +50,9 @@ from Twitter which we can then use inside our application. For example
 the following code returns to us an User model::
 
    # Get the User object for twitter...
-   user = tweepy.api.get_user('twitter')
+   user = api.get_user('twitter')
 
-Models container the data and some helper methods which we can then
+Models contain the data and some helper methods which we can then
 use::
 
    print user.screen_name

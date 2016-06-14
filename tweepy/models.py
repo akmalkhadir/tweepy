@@ -2,6 +2,8 @@
 # Copyright 2009-2010 Joshua Roesslein
 # See LICENSE for details.
 
+from __future__ import absolute_import, print_function
+
 from tweepy.utils import parse_datetime, parse_html_value, parse_a_href
 
 
@@ -90,6 +92,8 @@ class Status(Model):
                     setattr(status, k, v)
                     setattr(status, 'source_url', None)
             elif k == 'retweeted_status':
+                setattr(status, k, Status.parse(api, v))
+            elif k == 'quoted_status':
                 setattr(status, k, Status.parse(api, v))
             elif k == 'place':
                 if v is not None:
@@ -456,6 +460,16 @@ class Place(Model):
         return results
 
 
+class Media(Model):
+
+    @classmethod
+    def parse(cls, api, json):
+        media = cls(api)
+        for k, v in json.items():
+            setattr(media, k, v)
+        return media
+
+
 class ModelFactory(object):
     """
     Used by parsers for creating instances
@@ -473,6 +487,7 @@ class ModelFactory(object):
     list = List
     relation = Relation
     relationship = Relationship
+    media = Media
 
     json = JSONModel
     ids = IDModel

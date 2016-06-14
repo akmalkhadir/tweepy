@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #from distutils.core import setup
-import re
+import re, uuid
 from setuptools import setup, find_packages
 from pip.req import parse_requirements
 
@@ -14,7 +14,7 @@ if mo:
 else:
     raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
 
-install_reqs = parse_requirements('requirements.txt')
+install_reqs = parse_requirements('requirements.txt', session=uuid.uuid1())
 reqs = [str(req.req) for req in install_reqs]
 
 setup(name="tweepy",
@@ -27,4 +27,17 @@ setup(name="tweepy",
       packages=find_packages(exclude=['tests']),
       install_requires=reqs,
       keywords="twitter library",
+      classifiers=[
+          'Development Status :: 4 - Beta',
+          'Topic :: Software Development :: Libraries',
+          'License :: OSI Approved :: MIT License',
+          'Operating System :: OS Independent',
+          'Programming Language :: Python',
+          'Programming Language :: Python :: 2',
+          'Programming Language :: Python :: 2.6',
+          'Programming Language :: Python :: 2.7',
+          'Programming Language :: Python :: 3',
+          'Programming Language :: Python :: 3.3',
+          'Programming Language :: Python :: 3.4',
+      ],
       zip_safe=True)

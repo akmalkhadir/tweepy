@@ -174,7 +174,7 @@ User methods
    :rtype: :class:`User` object
 
 
-.. method::API.friends([id/user_id/screen_name], [cursor])
+.. method::API.friends([id/user_id/screen_name], [cursor], [skip_status], [include_user_entities])
 
    Returns an user's friends ordered in which they were added 100 at a time. If no user is specified it defaults to the authenticated user.
 
@@ -182,6 +182,8 @@ User methods
    :param user_id: |user_id|
    :param screen_name: |screen_name|
    :param cursor: |cursor|
+   :param skip_status: |skip_status|
+   :param include_user_entities: |include_user_entities|
    :rtype: list of :class:`User` objects
 
 
@@ -214,7 +216,7 @@ User methods
 Direct Message Methods
 ----------------------
 
-.. method:: API.direct_messages([since_id], [max_id], [count], [page])
+.. method:: API.direct_messages([since_id], [max_id], [count], [page], [full_text])
 
    Returns direct messages sent to the authenticating user.
 
@@ -222,10 +224,20 @@ Direct Message Methods
    :param max_id: |max_id|
    :param count: |count|
    :param page: |page|
+   :param full_text: |full_text|
    :rtype: list of :class:`DirectMessage` objects
 
 
-.. method:: API.sent_direct_messages([since_id], [max_id], [count], [page])
+.. method:: API.get_direct_message([id], [full_text])
+
+   Returns a specific direct message.
+
+   :param id: |id|
+   :param full_text: |full_text|
+   :rtype: :class:`DirectMessage` object
+
+
+.. method:: API.sent_direct_messages([since_id], [max_id], [count], [page], [full_text])
 
    Returns direct messages sent by the authenticating user.
 
@@ -233,6 +245,7 @@ Direct Message Methods
    :param max_id: |max_id|
    :param count: |count|
    :param page: |page|
+   :param full_text: |full_text|
    :rtype: list of :class:`DirectMessage` objects
 
 
@@ -534,46 +547,10 @@ Help Methods
    :param locale: Specify the language of the query you are sending. This is intended for language-specific clients and the default should work in the majority of cases.
    :param rpp: The number of tweets to return per page, up to a max of 100.
    :param page: The page number (starting at 1) to return, up to a max of roughly 1500 results (based on rpp * page.
+   :param since_id: |since_id|
    :param geocode: Returns tweets by users located within a given radius of the given latitude/longitude.  The location is preferentially taking from the Geotagging API, but will fall back to their Twitter profile. The parameter value is specified by "latitide,longitude,radius", where radius units must be specified as either "mi" (miles) or "km" (kilometers). Note that you cannot use the near operator via the API to geocode arbitrary locations; however you can use this geocode parameter to search near geocodes directly.
    :param show_user: When true, prepends "<user>:" to the beginning of the tweet. This is useful for readers that do not display Atom's author field. The default is false.
    :rtype: list of :class:`SearchResult` objects
-
-
-.. method:: API.trends()
-
-   Returns the top ten topics that are currently trending on Twitter. The
-   response includes the time of the request, the name of each trend, and
-   the url to the Twitter Search results page for that topic.
-
-   :rtype: :class:`JSON` object
-
-
-.. method:: API.trends_current([exclude])
-
-   Returns the current top 10 trending topics on Twitter. The response
-   includes the time of the request, the name of each trending topic, and
-   query used on Twitter Search results page for that topic.
-
-   :param exclude: |exclude|
-   :rtype: :class:`JSON` object
-
-
-.. method:: API.trends_daily([date], [exclude])
-
-   Returns the top 20 trending topics for each hour in a given day.
-
-   :param date: |date|
-   :param exclude: |exclude|
-   :rtype: :class:`JSON` object
-
-
-.. method:: API.trends_weekly([date], [exclude])
-
-   Returns the top 30 trending topics for each day in a given week.
-
-   :param date: |date|
-   :param exclude: |exclude|
-   :rtype: :class:`JSON` object
 
 
 List Methods
@@ -737,15 +714,38 @@ List Methods
    :rtype: :class:`User` object if user is subscribed to the list, otherwise False.
 
 
-Local Trends Methods
+Trends Methods
 --------------------
 
-.. method:: API.trends_available([lat], [long])
+.. method:: API.trends_available()
 
-   Returns the locations that Twitter has trending topic information for. The response is an array of "locations" that encode the location's WOEID (a Yahoo! Where On Earth ID) and some other human-readable information such as a canonical name and country the location belongs in. [Coming soon]
+   Returns the locations that Twitter has trending topic information for. The response is an array of "locations" that encode the location's WOEID (a Yahoo! Where On Earth ID) and some other human-readable information such as a canonical name and country the location belongs in.
 
-   :param lat: If passed in conjunction with long, then the available trend locations will be sorted by distance to the lat and long passed in.  The sort is nearest to furthest.
-   :param long: See lat.
+   :rtype: :class:`JSON` object
+
+
+.. method:: API.trends_place(id, [exclude])
+
+   Returns the top 10 trending topics for a specific WOEID, if trending information is available for it.
+
+   The response is an array of “trend” objects that encode the name of the trending topic, the query parameter that can be used to search for the topic on Twitter Search, and the Twitter Search URL.
+
+   This information is cached for 5 minutes. Requesting more frequently than that will not return any more data, and will count against your rate limit usage.
+
+   :param id: The Yahoo! Where On Earth ID of the location to return trending information for. Global information is available by using 1 as the WOEID.
+   :param exclude: Setting this equal to hashtags will remove all hashtags from the trends list.
+   :rtype: :class:`JSON` object
+
+.. method:: API.trends_closest(lat, long)
+
+   Returns the locations that Twitter has trending topic information for, closest to a specified location.
+
+   The response is an array of “locations” that encode the location’s WOEID and some other human-readable information such as a canonical name and country the location belongs in.
+
+   A WOEID is a Yahoo! Where On Earth ID.
+
+   :param lat: If provided with a long parameter the available trend locations will be sorted by distance, nearest to furthest, to the co-ordinate pair. The valid ranges for longitude is -180.0 to +180.0 (West is negative, East is positive) inclusive.
+   :param long: If provided with a lat parameter the available trend locations will be sorted by distance, nearest to furthest, to the co-ordinate pair. The valid ranges for longitude is -180.0 to +180.0 (West is negative, East is positive) inclusive.
    :rtype: :class:`JSON` object
 
 
@@ -788,3 +788,29 @@ Geo Methods
    Given *id* of a place, provide more details about that place.
 
    :param id: Valid Twitter ID of a location.
+
+:mod:`tweepy.error` --- Exceptions
+==================================
+
+The exceptions are available in the ``tweepy`` module directly,
+which means ``tweepy.error`` itself does not need to be imported. For
+example, ``tweepy.error.TweepError`` is available as ``tweepy.TweepError``.
+
+.. exception:: TweepError
+   
+   The main exception Tweepy uses. Is raised for a number of things.
+   
+   When a ``TweepError`` is raised due to an error Twitter responded with,
+   the error code (`as described in the API documentation
+   <https://dev.twitter.com/overview/api/response-codes>`_) can be accessed
+   at ``TweepError.message[0]['code']``. Note, however, that ``TweepError``\ s
+   also may be raised with other things as message (for example plain
+   error reason strings).
+
+.. exception:: RateLimitError
+   
+   Is raised when an API method fails due to hitting Twitter's rate
+   limit. Makes for easy handling of the rate limit specifically.
+   
+   Inherits from :exc:`TweepError`, so ``except TweepError`` will
+   catch a ``RateLimitError`` too.

@@ -2,8 +2,12 @@
 # Copyright 2009-2010 Joshua Roesslein
 # See LICENSE for details.
 
+from __future__ import print_function
+
 import os
 import mimetypes
+
+import six
 
 from tweepy.binder import bind_api
 from tweepy.error import TweepError
@@ -16,18 +20,21 @@ class API(object):
 
     def __init__(self, auth_handler=None,
                  host='api.twitter.com', search_host='search.twitter.com',
-                 cache=None, api_root='/1.1', search_root='',
-                 retry_count=0, retry_delay=0, retry_errors=None, timeout=60,
-                 parser=None, compression=False, wait_on_rate_limit=False,
+                 upload_host='upload.twitter.com', cache=None, api_root='/1.1',
+                 search_root='', upload_root='/1.1', retry_count=0,
+                 retry_delay=0, retry_errors=None, timeout=60, parser=None,
+                 compression=False, wait_on_rate_limit=False,
                  wait_on_rate_limit_notify=False, proxy=''):
         """ Api instance Constructor
 
         :param auth_handler:
         :param host:  url of the server of the rest api, default:'api.twitter.com'
         :param search_host: url of the search server, default:'search.twitter.com'
+        :param upload_host: url of the upload server, default:'upload.twitter.com'
         :param cache: Cache to query if a GET method is used, default:None
         :param api_root: suffix of the api version, default:'/1.1'
         :param search_root: suffix of the search version, default:''
+        :param upload_root: suffix of the upload version, default:'/1.1'
         :param retry_count: number of allowed retries, default:0
         :param retry_delay: delay in second between retries, default:0
         :param retry_errors: default:None
@@ -43,8 +50,10 @@ class API(object):
         self.auth = auth_handler
         self.host = host
         self.search_host = search_host
+        self.upload_host = upload_host
         self.api_root = api_root
         self.search_root = search_root
+        self.upload_root = upload_root
         self.cache = cache
         self.compression = compression
         self.retry_count = retry_count
@@ -64,9 +73,11 @@ class API(object):
         parser_type = Parser
         if not isinstance(self.parser, parser_type):
             raise TypeError(
-                '"parser" argument has to be an instance of "{}".'
-                ' It is currently a {}.'.format(parser_type.__name__,
-                                                type(self.parser))
+                '"parser" argument has to be an instance of "{required}".'
+                ' It is currently a {actual}.'.format(
+                    required=parser_type.__name__,
+                    actual=type(self.parser)
+                )
             )
 
     @property
@@ -164,23 +175,45 @@ class API(object):
             allowed_param=['id']
         )
 
-    @property
-    def update_status(self):
+    def update_status(self, *args, **kwargs):
         """ :reference: https://dev.twitter.com/rest/reference/post/statuses/update
-            :allowed_param:'status', 'in_reply_to_status_id', 'lat', 'long', 'source', 'place_id', 'display_coordinates'
+            :allowed_param:'status', 'in_reply_to_status_id', 'in_reply_to_status_id_str', 'lat', 'long', 'source', 'place_id', 'display_coordinates', 'media_ids'
         """
+        post_data = {}
+        media_ids = kwargs.pop("media_ids", None)
+        if media_ids is not None:
+            post_data["media_ids"] = list_to_csv(media_ids)
+
         return bind_api(
             api=self,
             path='/statuses/update.json',
             method='POST',
             payload_type='status',
-            allowed_param=['status', 'in_reply_to_status_id', 'lat', 'long', 'source', 'place_id', 'display_coordinates'],
+            allowed_param=['status', 'in_reply_to_status_id', 'in_reply_to_status_id_str','lat', 'long', 'source', 'place_id', 'display_coordinates'],
             require_auth=True
-        )
+        )(post_data=post_data, *args, **kwargs)
+
+    def media_upload(self, filename, *args, **kwargs):
+        """ :reference: https://dev.twitter.com/rest/reference/post/media/upload
+            :allowed_param:
+        """
+        f = kwargs.pop('file', None)
+        headers, post_data = API._pack_image(filename, 3072, form_field='media', f=f)
+        kwargs.update({'headers': headers, 'post_data': post_data})
+
+        return bind_api(
+            api=self,
+            path='/media/upload.json',
+            method='POST',
+            payload_type='media',
+            allowed_param=[],
+            require_auth=True,
+            upload_api=True
+        )(*args, **kwargs)
 
     def update_with_media(self, filename, *args, **kwargs):
         """ :reference: https://dev.twitter.com/rest/reference/post/statuses/update_with_media
-            :allowed_param:'status', 'possibly_sensitive', 'in_reply_to_status_id', 'lat', 'long', 'place_id', 'display_coordinates'
+            :allowed_param:'status', 'possibly_sensitive', 'in_reply_to_status_id', 'in_reply_to_status_id_str', 'lat', 'long', 'place_id', 'display_coordinates'
         """
         f = kwargs.pop('file', None)
         headers, post_data = API._pack_image(filename, 3072, form_field='media[]', f=f)
@@ -192,8 +225,8 @@ class API(object):
             method='POST',
             payload_type='status',
             allowed_param=[
-                'status', 'possibly_sensitive', 'in_reply_to_status_id', 'lat', 'long',
-                'place_id', 'display_coordinates'
+                'status', 'possibly_sensitive', 'in_reply_to_status_id', 'in_reply_to_status_id_str', 
+                'lat', 'long', 'place_id', 'display_coordinates'
             ],
             require_auth=True
         )(*args, **kwargs)
@@ -359,39 +392,39 @@ class API(object):
     @property
     def direct_messages(self):
         """ :reference: https://dev.twitter.com/rest/reference/get/direct_messages
-            :allowed_param:'since_id', 'max_id', 'count'
+            :allowed_param:'since_id', 'max_id', 'count', 'full_text'
         """
         return bind_api(
             api=self,
             path='/direct_messages.json',
             payload_type='direct_message', payload_list=True,
-            allowed_param=['since_id', 'max_id', 'count'],
+            allowed_param=['since_id', 'max_id', 'count', 'full_text'],
             require_auth=True
         )
 
     @property
     def get_direct_message(self):
         """ :reference: https://dev.twitter.com/rest/reference/get/direct_messages/show
-            :allowed_param:'id'
+            :allowed_param:'id', 'full_text'
         """
         return bind_api(
             api=self,
             path='/direct_messages/show/{id}.json',
             payload_type='direct_message',
-            allowed_param=['id'],
+            allowed_param=['id', 'full_text'],
             require_auth=True
         )
 
     @property
     def sent_direct_messages(self):
         """ :reference: https://dev.twitter.com/rest/reference/get/direct_messages/sent
-            :allowed_param:'since_id', 'max_id', 'count', 'page'
+            :allowed_param:'since_id', 'max_id', 'count', 'page', 'full_text'
         """
         return bind_api(
             api=self,
             path='/direct_messages/sent.json',
             payload_type='direct_message', payload_list=True,
-            allowed_param=['since_id', 'max_id', 'count', 'page'],
+            allowed_param=['since_id', 'max_id', 'count', 'page', 'full_text'],
             require_auth=True
         )
 
@@ -496,13 +529,13 @@ class API(object):
     @property
     def friends(self):
         """ :reference: https://dev.twitter.com/rest/reference/get/friends/list
-            :allowed_param:'id', 'user_id', 'screen_name', 'cursor'
+            :allowed_param:'id', 'user_id', 'screen_name', 'cursor', 'skip_status', 'include_user_entities'
         """
         return bind_api(
             api=self,
             path='/friends/list.json',
             payload_type='user', payload_list=True,
-            allowed_param=['id', 'user_id', 'screen_name', 'cursor']
+            allowed_param=['id', 'user_id', 'screen_name', 'cursor', 'skip_status', 'include_user_entities']
         )
 
     @property
@@ -554,9 +587,39 @@ class API(object):
                            'skip_status', 'include_user_entities']
         )
 
+    @property
+    def get_settings(self):
+        """ :reference: https://dev.twitter.com/rest/reference/get/account/settings
+        """
+        return bind_api(
+            api=self,
+            path='/account/settings.json',
+            payload_type='json',
+            use_cache=False
+        )
+
+    @property
+    def set_settings(self):
+        """ :reference: https://dev.twitter.com/rest/reference/post/account/settings
+            :allowed_param:'sleep_time_enabled', 'start_sleep_time',
+            'end_sleep_time', 'time_zone', 'trend_location_woeid',
+            'allow_contributor_request', 'lang'
+        """
+        return bind_api(
+            api=self,
+            path='/account/settings.json',
+            method='POST',
+            payload_type='json',
+            allowed_param=['sleep_time_enabled', 'start_sleep_time',
+                           'end_sleep_time', 'time_zone',
+                           'trend_location_woeid', 'allow_contributor_request',
+                           'lang'],
+            use_cache=False
+        )
+
     def verify_credentials(self, **kargs):
         """ :reference: https://dev.twitter.com/rest/reference/get/account/verify_credentials
-            :allowed_param:'include_entities', 'skip_status'
+            :allowed_param:'include_entities', 'skip_status', 'include_email'
         """
         try:
             return bind_api(
@@ -564,7 +627,7 @@ class API(object):
                 path='/account/verify_credentials.json',
                 payload_type='user',
                 require_auth=True,
-                allowed_param=['include_entities', 'skip_status'],
+                allowed_param=['include_entities', 'skip_status', 'include_email'],
             )(**kargs)
         except TweepError as e:
             if e.response and e.response.status == 401:
@@ -643,7 +706,7 @@ class API(object):
             payload_type='user',
             allowed_param=['tile', 'include_entities', 'skip_status', 'use'],
             require_auth=True
-        )(self, post_data=post_data, headers=headers)
+        )(post_data=post_data, headers=headers)
 
     def update_profile_banner(self, filename, **kargs):
         """ :reference: https://dev.twitter.com/rest/reference/post/account/update_profile_banner
@@ -657,7 +720,7 @@ class API(object):
             method='POST',
             allowed_param=['width', 'height', 'offset_left', 'offset_right'],
             require_auth=True
-        )(self, post_data=post_data, headers=headers)
+        )(post_data=post_data, headers=headers)
 
     @property
     def update_profile(self):
@@ -980,7 +1043,7 @@ class API(object):
     @property
     def _add_list_members(self):
         """ :reference: https://dev.twitter.com/docs/api/1.1/post/lists/members/create_all
-            :allowed_param:'screen_name', 'user_id', 'slug', 'lit_id',
+            :allowed_param:'screen_name', 'user_id', 'slug', 'list_id',
             'owner_id', 'owner_screen_name'
 
         """
@@ -989,7 +1052,7 @@ class API(object):
             path='/lists/members/create_all.json',
             method='POST',
             payload_type='list',
-            allowed_param=['screen_name', 'user_id', 'slug', 'lit_id',
+            allowed_param=['screen_name', 'user_id', 'slug', 'list_id',
                            'owner_id', 'owner_screen_name'],
             require_auth=True
         )
@@ -1005,7 +1068,7 @@ class API(object):
     @property
     def _remove_list_members(self):
         """ :reference: https://dev.twitter.com/docs/api/1.1/post/lists/members/destroy_all
-            :allowed_param:'screen_name', 'user_id', 'slug', 'lit_id',
+            :allowed_param:'screen_name', 'user_id', 'slug', 'list_id',
             'owner_id', 'owner_screen_name'
 
         """
@@ -1014,7 +1077,7 @@ class API(object):
             path='/lists/members/destroy_all.json',
             method='POST',
             payload_type='list',
-            allowed_param=['screen_name', 'user_id', 'slug', 'lit_id',
+            allowed_param=['screen_name', 'user_id', 'slug', 'list_id',
                            'owner_id', 'owner_screen_name'],
             require_auth=True
         )
@@ -1142,7 +1205,7 @@ class API(object):
 
     @property
     def search(self):
-        """ :reference: https://dev.twitter.com/docs/api/1.1/get/search
+        """ :reference: https://dev.twitter.com/rest/reference/get/search/tweets
             :allowed_param:'q', 'lang', 'locale', 'since_id', 'geocode',
              'max_id', 'since', 'until', 'result_type', 'count',
               'include_entities', 'from', 'to', 'source']
@@ -1155,30 +1218,6 @@ class API(object):
                            'max_id', 'since', 'until', 'result_type',
                            'count', 'include_entities', 'from',
                            'to', 'source']
-        )
-
-    @property
-    def trends_daily(self):
-        """ :reference: https://dev.twitter.com/docs/api/1.1/get/trends/daily
-            :allowed_param:'date', 'exclude'
-        """
-        return bind_api(
-            api=self,
-            path='/trends/daily.json',
-            payload_type='json',
-            allowed_param=['date', 'exclude']
-        )
-
-    @property
-    def trends_weekly(self):
-        """ :reference: https://dev.twitter.com/docs/api/1.1/get/trends/weekly
-            :allowed_param:'date', 'exclude'
-        """
-        return bind_api(
-            api=self,
-            path='/trends/weekly.json',
-            payload_type='json',
-            allowed_param=['date', 'exclude']
         )
 
     @property
@@ -1262,16 +1301,16 @@ class API(object):
         if f is None:
             try:
                 if os.path.getsize(filename) > (max_size * 1024):
-                    raise TweepError('File is too big, must be less than 700kb.')
-            except os.error:
-                raise TweepError('Unable to access file')
+                    raise TweepError('File is too big, must be less than %skb.' % max_size)
+            except os.error as e:
+                raise TweepError('Unable to access file: %s' % e.strerror)
 
             # build the mulitpart-formdata body
             fp = open(filename, 'rb')
         else:
             f.seek(0, 2)  # Seek to end of file
             if f.tell() > (max_size * 1024):
-                raise TweepError('File is too big, must be less than 700kb.')
+                raise TweepError('File is too big, must be less than %skb.' % max_size)
             f.seek(0)  # Reset to beginning of file
             fp = f
 
@@ -1283,21 +1322,22 @@ class API(object):
         if file_type not in ['image/gif', 'image/jpeg', 'image/png']:
             raise TweepError('Invalid file type for image: %s' % file_type)
 
-        if isinstance(filename, unicode):
+        if isinstance(filename, six.text_type):
             filename = filename.encode("utf-8")
-        filename = filename.encode("utf-8")
 
-        boundary = 'Tw3ePy'
+        BOUNDARY = b'Tw3ePy'
         body = list()
-        body.append('--' + boundary)
-        body.append('Content-Disposition: form-data; name="%s"; filename="%s"' % (form_field, filename))
-        body.append('Content-Type: %s' % file_type)
-        body.append('')
+        body.append(b'--' + BOUNDARY)
+        body.append('Content-Disposition: form-data; name="{0}";'
+                    ' filename="{1}"'.format(form_field, filename)
+                    .encode('utf-8'))
+        body.append('Content-Type: {0}'.format(file_type).encode('utf-8'))
+        body.append(b'')
         body.append(fp.read())
-        body.append('--' + boundary + '--')
-        body.append('')
+        body.append(b'--' + BOUNDARY + b'--')
+        body.append(b'')
         fp.close()
-        body = '\r\n'.join(body)
+        body = b'\r\n'.join(body)
 
         # build headers
         headers = {
